@@ -2,6 +2,16 @@ import discord
 import re
 import time
 import os
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
+TOKEN = os.getenv("DISCORD_TOKEN") 
+
+if TOKEN: 
+    logging.info("✅ Token carregado com sucesso") 
+else: 
+    logging.error("❌ Token não encontrado! Verifique Config Vars no Heroku")
 
 intents = discord.Intents.default()
 intents.messages = True
@@ -14,6 +24,7 @@ COOLDOWN = 10
 
 @client.event
 async def on_ready():
+    logging.info(f"Bot conectado como {client.user}")
     print(f"Bot conectado como {client.user}")
 
 @client.event
@@ -32,8 +43,10 @@ async def on_message(message):
             if channel_id not in last_used or now - last_used[channel_id] > COOLDOWN:
                 await message.channel.send(f"m!play {url}")
                 last_used[channel_id] = now
+                logging.info(f"Comando enviado: m!play {url} no canal {channel_id}")
             else:
                 await message.channel.send("⏳ Cooldown ativo, aguarde alguns segundos antes de postar outro link!")
+                logging.warning(f"Cooldown ativo no canal {channel_id}")
 
 
 TOKEN = os.getenv("DISCORD_TOKEN")
