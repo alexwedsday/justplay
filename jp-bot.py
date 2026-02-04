@@ -68,9 +68,22 @@ async def play_url(message, url):
         "js_runtimes": {"node": {}},
     }
 
+    # Ajustes do ffmpeg para reduzir uso de recursos e evitar crashes
     ffmpeg_opts = {
-        'options': '-vn'
+        'before_options': '-re -nostdin',
+        'options': '-vn -hide_banner -loglevel error -threads 1 -bufsize 64k'
     }
+
+    # Helper para remover arquivos temporários após playback
+    def _make_cleanup(path):
+        def _after(err):
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+                    logging.info(f"Arquivo temporário removido: {path}")
+            except Exception:
+                logging.exception("Erro ao remover arquivo temporário")
+        return _after
 
     try:
         from yt_dlp.utils import DownloadError
@@ -177,9 +190,29 @@ async def play_url(message, url):
                         matches = glob.glob(base + '.*')
                         if matches:
                             existing = matches[0]
-                            vc.play(discord.FFmpegPCMAudio(existing, **ffmpeg_opts))
-                            await message.channel.send(f"🎵 Tocando agora (download): {info_dl.get('title', url)}")
-                            return
+                            # Garantir conexão antes de tentar tocar
+                            channel = message.author.voice.channel if message.author and message.author.voice else None
+                            if not channel:
+                                await message.channel.send("❌ Não conectado a um canal de voz para reproduzir o arquivo baixado.")
+                                return
+                            # Conectar se necessário
+                            if message.guild.voice_client is None:
+                                vc = await channel.connect()
+                            else:
+                                vc = message.guild.voice_client
+                                try:
+                                    await vc.move_to(channel)
+                                except Exception:
+                                    logging.exception('Falha ao mover VoiceClient para o canal antes do playback do arquivo baixado')
+
+                            try:
+                                vc.play(discord.FFmpegPCMAudio(existing, **ffmpeg_opts), after=_make_cleanup(existing))
+                                await message.channel.send(f"🎵 Tocando agora (download): {info_dl.get('title', url)}")
+                                return
+                            except Exception as play_err:
+                                logging.exception('Erro ao reproduzir arquivo baixado')
+                                await message.channel.send(f"❌ Erro ao reproduzir arquivo baixado: {play_err}")
+                                return
             except Exception:
                 logging.exception('Fallback de download falhou após info None')
 
@@ -220,6 +253,26 @@ async def play_url(message, url):
         if not audio_url:
             await message.channel.send("❌ Não foi possível obter a URL de áudio válida.")
             return
+
+        # Garantir que temos uma conexão ativa antes de tocar
+        if not (vc and getattr(vc, 'is_connected', None) and vc.is_connected()):
+            channel = message.author.voice.channel if message.author and message.author.voice else None
+            if not channel:
+                await message.channel.send("❌ Não estou conectado a um canal de voz.")
+                return
+            try:
+                if message.guild.voice_client is None:
+                    vc = await channel.connect()
+                else:
+                    vc = message.guild.voice_client
+                    try:
+                        await vc.move_to(channel)
+                    except Exception:
+                        logging.exception('Falha ao mover VoiceClient para o canal antes do playback')
+            except Exception as e_conn:
+                logging.exception('Erro ao conectar/mover para o canal de voz antes do playback')
+                await message.channel.send(f"❌ Erro ao conectar ao canal de voz: {e_conn}")
+                return
 
         # Tentar reproduzir com tratamento de erros e tentativa de recovery
         try:
