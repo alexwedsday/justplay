@@ -48,7 +48,7 @@ async def on_message(message):
             
           
             if channel_id not in last_used or now - last_used[channel_id] > COOLDOWN:
-                await message.channel.send(f"m!play {url}")
+                await message.channel.send(f"m!play {url} --channel Fazendo NOTHING")
                 last_used[channel_id] = now
                 logging.info(f"Mensagem recebida no canal: {message.channel.name}")
                 logging.info(f"Comando enviado: m!play {url} no canal {channel_id}")
