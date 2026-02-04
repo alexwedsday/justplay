@@ -60,12 +60,7 @@ async def play_url(message, url):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             audio_url = info['url']
-
-       
-        if getattr(vc, 'is_playing', None) and (vc.is_playing() or vc.is_paused()):
-            vc.stop()
-
-        vc.play(discord.FFmpegPCMAudio(audio_url, **ffmpeg_opts))
+            vc.play(discord.FFmpegPCMAudio(audio_url))
         await message.channel.send(f"🎵 Tocando agora: {info.get('title', url)}")
     except Exception as e:
         logging.exception("Erro em play_url")
