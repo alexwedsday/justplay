@@ -115,108 +115,20 @@ async def play_url(message, url):
                 await message.channel.send(f"""❌ Formato solicitado indisponível e retry falhou. Formatos disponíveis (ou erro de listagem):
 ```
 {preview_text}
-```""")
+```
+Não farei download automático do arquivo. Para resolver este caso você pode:
+- Instalar um runtime JavaScript no dyno (ex.: deno ou node) para habilitar EJS do yt-dlp.
+- Fornecer cookies de sessão (exporte `cookies.txt` do navegador e coloque no env `YTDL_COOKIES`).
+- Tentar outro vídeo que não tenha restrições.
+""")
+                return
 
-                # Tentar fallback de download: baixa o arquivo e reproduz localmente
-                try:
-                    ydl_dl_opts = {
-                        'format': 'bestaudio/best',
-                        'outtmpl': '/tmp/%(id)s.%(ext)s',
-                        'noplaylist': True,
-                        'quiet': True,
-                        'cookiefile': 'cookies.txt',
-                    }
-                    with yt_dlp.YoutubeDL(ydl_dl_opts) as ydl:
-                        info_dl = ydl.extract_info(url, download=True)
-                        if not info_dl:
-                            raise Exception('Download fallback não retornou informações')
-                        filename = ydl.prepare_filename(info_dl)
-
-                    # Procurar pelo arquivo baixado (considerando possíveis conversões de extensão)
-                    base = os.path.splitext(filename)[0]
-                    candidates = [f"{base}.{ext}" for ext in ("m4a","mp3","webm","mp4","opus","wav")]
-                    candidates.append(filename)
-                    existing = None
-                    import glob
-                    for c in candidates:
-                        if os.path.exists(c):
-                            existing = c
-                            break
-                    if not existing:
-                        matches = glob.glob(base + '.*')
-                        if matches:
-                            existing = matches[0]
-                    if not existing:
-                        raise Exception('Arquivo de áudio não encontrado após download')
-
-                    # Para segurança, para qualquer reprodução atual
-                    if getattr(vc, 'is_playing', None) and (vc.is_playing() or vc.is_paused()):
-                        try:
-                            vc.stop()
-                        except Exception:
-                            logging.exception('Falha ao parar reprodução atual')
-
-                    try:
-                        vc.play(discord.FFmpegPCMAudio(existing, **ffmpeg_opts))
-                        await message.channel.send(f"🎵 Tocando agora (download): {info_dl.get('title', url)}")
-                        return
-                    except Exception as play_err:
-                        logging.exception('Erro ao reproduzir arquivo baixado')
-                        await message.channel.send(f"❌ Erro ao reproduzir arquivo baixado: {play_err}")
-                        return
-                except Exception:
-                    logging.exception('Fallback de download falhou')
-                    await message.channel.send('❌ Fallback de download falhou. Verifique logs.')
-                    return
 
         # Validação: garante que `info` foi retornado
         if not info:
             logging.error("yt-dlp retornou None para 'info' — conteúdo possivelmente indisponível ou requer cookies/JS runtime")
-            # Antes de falhar completamente, tentar fallback de download como último recurso
-            try:
-                ydl_dl_opts = {
-                    'format': 'bestaudio/best',
-                    'outtmpl': '/tmp/%(id)s.%(ext)s',
-                    'noplaylist': True,
-                    'quiet': True,
-                    'cookiefile': 'cookies.txt',
-                }
-                with yt_dlp.YoutubeDL(ydl_dl_opts) as ydl:
-                    info_dl = ydl.extract_info(url, download=True)
-                    if info_dl:
-                        filename = ydl.prepare_filename(info_dl)
-                        base = os.path.splitext(filename)[0]
-                        import glob
-                        matches = glob.glob(base + '.*')
-                        if matches:
-                            existing = matches[0]
-                            # Garantir conexão antes de tentar tocar
-                            channel = message.author.voice.channel if message.author and message.author.voice else None
-                            if not channel:
-                                await message.channel.send("❌ Não conectado a um canal de voz para reproduzir o arquivo baixado.")
-                                return
-                            # Conectar se necessário
-                            if message.guild.voice_client is None:
-                                vc = await channel.connect()
-                            else:
-                                vc = message.guild.voice_client
-                                try:
-                                    await vc.move_to(channel)
-                                except Exception:
-                                    logging.exception('Falha ao mover VoiceClient para o canal antes do playback do arquivo baixado')
-
-                            try:
-                                vc.play(discord.FFmpegPCMAudio(existing, **ffmpeg_opts), after=_make_cleanup(existing))
-                                await message.channel.send(f"🎵 Tocando agora (download): {info_dl.get('title', url)}")
-                                return
-                            except Exception as play_err:
-                                logging.exception('Erro ao reproduzir arquivo baixado')
-                                await message.channel.send(f"❌ Erro ao reproduzir arquivo baixado: {play_err}")
-                                return
-            except Exception:
-                logging.exception('Fallback de download falhou após info None')
-
-            await message.channel.send("❌ Não foi possível extrair informações do vídeo — pode estar indisponível, privado ou exigir cookies/JS runtime.")
+            # Não faço download automático por aqui — informar o usuário e sugerir ações
+            await message.channel.send("❌ Não foi possível extrair informações do vídeo — pode estar indisponível, privado, exigir cookies/JS runtime, ou necessitar de um runtime JS (deno/node). Não farei download automático; por favor verifique a URL ou forneça cookies via a env var `YTDL_COOKIES`.")
             return
 
         # Se for playlist, pega o primeiro item válido
