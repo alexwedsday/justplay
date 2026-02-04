@@ -49,6 +49,7 @@ async def play_url(message, url):
     ydl_opts = {
         'format': 'bestaudio/best',
         'quiet': True,
+        'cookiefile': 'cookies.txt'
     }
     ffmpeg_opts = {
         'options': '-vn'
@@ -59,7 +60,7 @@ async def play_url(message, url):
             info = ydl.extract_info(url, download=False)
             audio_url = info['url']
 
-    
+       
         if getattr(vc, 'is_playing', None) and (vc.is_playing() or vc.is_paused()):
             vc.stop()
 
