@@ -53,9 +53,14 @@ async def on_message(message):
             channel_id = message.channel.id
 
             if message.author.voice:
-                 channel = message.author.voice.channel
-                 logging.info(f"Canal de voz do autor: {channel}")
-                 await channel.connect();
+                channel = message.author.voice.channel
+                 if message.guild.voice_client is None:
+                    logging.info(f"Canal de voz do autor: {channel}")
+                    await channel.connect();
+                else:
+                    logging.info(f"Bot já conectado a um canal de voz no servidor {message.guild.name}")
+                    await message.guild.voice_client.move_to(channel)
+                   
                  
             else:
                 logging.warning(f"Usuário {name} não está em um canal de voz")
