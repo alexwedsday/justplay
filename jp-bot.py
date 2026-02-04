@@ -53,7 +53,8 @@ async def play_url(message, url):
         "ignoreerrors": True, 
         "default_search": "ytsearch", 
         "quiet": True,
-        'cookiefile': 'cookies.txt'
+        'cookiefile': 'cookies.txt',
+        "js_runtimes": ["deno"]
     }
 
     ffmpeg_opts = {
