@@ -93,14 +93,32 @@ async def play_url(message, url):
 ```""")
                 raise
 
+        # Validação: garante que `info` foi retornado
+        if not info:
+            logging.error("yt-dlp retornou None para 'info' — conteúdo possivelmente indisponível ou requer cookies/JS runtime")
+            await message.channel.send("❌ Não foi possível extrair informações do vídeo — pode estar indisponível, privado ou exigir cookies/JS runtime.")
+            return
+
         # Se for playlist, pega o primeiro item válido
         if isinstance(info, dict) and 'entries' in info:
             entries = [e for e in info['entries'] if e]
             if not entries:
-                raise Exception("Nenhuma entrada encontrada na playlist.")
+                await message.channel.send("❌ Nenhuma entrada encontrada na playlist.")
+                return
             info = entries[0]
 
-        logging.info(f"Informações extraídas para {url}: {json.dumps(ydl.sanitize_info(info), indent=2)}")
+        # Log seguro das informações (sanitize se disponível)
+        sanitizer = getattr(yt_dlp, 'sanitize_info', None)
+        safe_info = sanitizer(info) if sanitizer else info
+        try:
+            logging.info(f"Informações extraídas para {url}: {json.dumps(safe_info, indent=2)}")
+        except Exception:
+            logging.info("Informações extraídas (não serializáveis) — consulte logs")
+
+        # Garante que info seja um dicionário antes de usar .get
+        if not isinstance(info, dict):
+            await message.channel.send("❌ Estrutura de dados inesperada retornada pelo extractor.")
+            return
 
         audio_url = info.get('url')
         if not audio_url:
@@ -109,10 +127,12 @@ async def play_url(message, url):
                 audio_format = sorted(formats, key=lambda f: (f.get('abr') or 0, f.get('filesize') or 0), reverse=True)[0]
                 audio_url = audio_format.get('url')
             else:
-                raise Exception("Nenhuma URL de áudio encontrada nas informações extraídas.")
+                await message.channel.send("❌ Nenhuma URL de áudio encontrada nas informações extraídas.")
+                return
 
         if not audio_url:
-            raise Exception("Não foi possível obter a URL de áudio válida.")
+            await message.channel.send("❌ Não foi possível obter a URL de áudio válida.")
+            return
 
         vc.play(discord.FFmpegPCMAudio(audio_url, **ffmpeg_opts))
         await message.channel.send(f"🎵 Tocando agora: {info.get('title', url)}")
