@@ -48,8 +48,6 @@ async def on_message(message):
             logging.info(f"Link detectado na mensagem de {author}: {url}")
             name = author.display_name
             logging.info(f"Nome do autor: {name}")
-            channel = message.author.voice.channel
-            logging.info(f"Canal de voz do autor: {channel}")
             channel_id = message.channel.id
 
             if message.author.voice:
