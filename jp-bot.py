@@ -47,7 +47,7 @@ async def play_url(message, url):
         return
 
     ydl_opts = {
-        'format': 'bestaudio/best',
+        'format': 'bv*+ba/b',
         'quiet': True,
         'noplaylist': True,
         'cookiefile': 'cookies.txt'
