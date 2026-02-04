@@ -68,8 +68,28 @@ async def play_url(message, url):
             logging.warning("Formato solicitado não disponível; tentando sem especificar 'format'...")
             ydl_retry_opts = dict(ydl_opts)
             ydl_retry_opts.pop('format', None)
-            with yt_dlp.YoutubeDL(ydl_retry_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+            try:
+                with yt_dlp.YoutubeDL(ydl_retry_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+            except DownloadError as e2:
+                logging.exception("Retry falhou: formato ainda indisponível")
+                # Tentar obter a lista de formatos via binário yt-dlp para diagnóstico
+                try:
+                    import subprocess
+                    proc = subprocess.run(['yt-dlp', '--list-formats', url], capture_output=True, text=True, timeout=15)
+                    formats_out = proc.stdout or proc.stderr
+                except Exception as sub_err:
+                    logging.exception("Erro ao executar yt-dlp --list-formats")
+                    formats_out = f"Não foi possível listar formatos: {sub_err}"
+
+                # Truncar a saída para evitar mensagens muito longas no Discord
+                formats_preview = formats_out.strip().splitlines()[:20]
+                preview_text = "\n".join(formats_preview)
+                await message.channel.send(f"""❌ Formato solicitado indisponível e retry falhou. Formatos disponíveis (ou erro de listagem):
+```
+{preview_text}
+```""")
+                raise
 
         # Se for playlist, pega o primeiro item válido
         if isinstance(info, dict) and 'entries' in info:
