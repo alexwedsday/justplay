@@ -48,27 +48,55 @@ async def play_url(message, url):
         return
     
     ydl_opts = {
+        'format': 'bestaudio/best',
+        'quiet': True,
+        'noplaylist': True,
         'cookiefile': 'cookies.txt'
-        }
+    }
 
-   
     ffmpeg_opts = {
         'options': '-vn'
     }
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            logging.info(f"Informações extraídas para {url}: {json.dumps(info, indent=2)}")
-            logging.info(f"URL de áudio extraída: {info.get('url')}")
-            print(json.dumps(ydl.sanitize_info(info)))
-            audio_url = info['url']
-           
+        from yt_dlp.utils import DownloadError
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+        except DownloadError as e:
+            logging.warning("Formato solicitado não disponível; tentando sem especificar 'format'...")
+            ydl_retry_opts = dict(ydl_opts)
+            ydl_retry_opts.pop('format', None)
+            with yt_dlp.YoutubeDL(ydl_retry_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+
+        # Se for playlist, pega o primeiro item válido
+        if isinstance(info, dict) and 'entries' in info:
+            entries = [e for e in info['entries'] if e]
+            if not entries:
+                raise Exception("Nenhuma entrada encontrada na playlist.")
+            info = entries[0]
+
+        logging.info(f"Informações extraídas para {url}: {json.dumps(ydl.sanitize_info(info), indent=2)}")
+
+        audio_url = info.get('url')
+        if not audio_url:
+            formats = info.get('formats') or []
+            if formats:
+                audio_format = sorted(formats, key=lambda f: (f.get('abr') or 0, f.get('filesize') or 0), reverse=True)[0]
+                audio_url = audio_format.get('url')
+            else:
+                raise Exception("Nenhuma URL de áudio encontrada nas informações extraídas.")
+
+        if not audio_url:
+            raise Exception("Não foi possível obter a URL de áudio válida.")
+
+        vc.play(discord.FFmpegPCMAudio(audio_url, **ffmpeg_opts))
         await message.channel.send(f"🎵 Tocando agora: {info.get('title', url)}")
     except Exception as e:
         logging.exception("Erro em play_url")
         await message.channel.send(f"❌ Erro ao tentar tocar o áudio: {e}")
-        raise
 
 @client.event
 async def on_ready():
