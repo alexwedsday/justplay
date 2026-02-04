@@ -54,14 +54,13 @@ async def on_message(message):
 
             if message.author.voice:
                 channel = message.author.voice.channel
-                 if message.guild.voice_client is None:
+                if message.guild.voice_client is None:
                     logging.info(f"Canal de voz do autor: {channel}")
-                    await channel.connect();
+                    await channel.connect()
                 else:
                     logging.info(f"Bot já conectado a um canal de voz no servidor {message.guild.name}")
                     await message.guild.voice_client.move_to(channel)
-                   
-                 
+
             else:
                 logging.warning(f"Usuário {name} não está em um canal de voz")
                 await message.channel.send("⚠️ Você precisa estar em um canal de voz para usar este comando!")
