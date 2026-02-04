@@ -4,6 +4,12 @@ import time
 import os
 import logging
 
+try:
+    import yt_dlp
+except Exception:
+    yt_dlp = None
+    logging.warning("yt_dlp não disponível; a reprodução de URLs pode falhar se o pacote não estiver instalado.")
+
 logging.basicConfig(level=logging.INFO)
 
 TOKEN = os.getenv("DISCORD_TOKEN") 
@@ -27,6 +33,42 @@ logging.info(f" - message_content: {intents.message_content}")
 last_used = {}
 
 COOLDOWN = 10  
+
+async def play_url(message, url):
+
+    vc = message.guild.voice_client
+    if vc is None:
+        await message.channel.send("❌ Não estou conectado a um canal de voz.")
+        return
+
+    if yt_dlp is None:
+        await message.channel.send("❌ O pacote yt-dlp não está instalado no ambiente do bot.")
+        logging.error("yt_dlp não disponível")
+        return
+
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'quiet': True,
+    }
+    ffmpeg_opts = {
+        'options': '-vn'
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            audio_url = info['url']
+
+    
+        if getattr(vc, 'is_playing', None) and (vc.is_playing() or vc.is_paused()):
+            vc.stop()
+
+        vc.play(discord.FFmpegPCMAudio(audio_url, **ffmpeg_opts))
+        await message.channel.send(f"🎵 Tocando agora: {info.get('title', url)}")
+    except Exception as e:
+        logging.exception("Erro em play_url")
+        await message.channel.send(f"❌ Erro ao tentar tocar o áudio: {e}")
+        raise
 
 @client.event
 async def on_ready():
@@ -66,10 +108,14 @@ async def on_message(message):
             
           
             if channel_id not in last_used or now - last_used[channel_id] > COOLDOWN:
-                await message.channel.send(f"m!play {url} --channel {message.author.voice.channel}")
-                last_used[channel_id] = now
-                logging.info(f"Mensagem recebida no canal: {message.channel.name}")
-                logging.info(f"Comando enviado: m!play {url} no canal {channel_id}")
+                try:
+                    last_used[channel_id] = now
+                    await play_url(message, url)
+                    logging.info(f"Mensagem recebida no canal: {message.channel.name}")
+                    logging.info(f"Tocando url {url} no canal {channel_id}")
+                except Exception as e:
+                    logging.exception("Erro ao tocar áudio")
+                    await message.channel.send(f"❌ Erro ao tentar tocar o áudio: {e}")
             else:
                 await message.channel.send("⏳ Cooldown ativo, aguarde alguns segundos antes de postar outro link!")
                 logging.warning(f"Cooldown ativo no canal {channel_id}")
