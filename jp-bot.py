@@ -49,7 +49,7 @@ async def play_url(message, url):
     ydl_opts = {
         'format': 'bestaudio/best',
         'quiet': True,
-        'cookiefile': 'cookies.txt'
+        'noplaylist': True,
     }
     ffmpeg_opts = {
         'options': '-vn'
