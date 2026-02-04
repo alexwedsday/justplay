@@ -233,21 +233,58 @@ async def play_url(message, url):
             await message.channel.send(f"🎵 Tocando agora: {info.get('title', url)}")
         except Exception as e_play:
             logging.exception("Erro ao iniciar reprodução via streaming")
-            # tentativa de recuperação: desconectar e reconectar no canal do autor
+            # tentativa de recuperação: parar, desconectar (se necessário), e reconectar/mover para o canal do autor
             try:
                 channel = message.author.voice.channel if message.author and message.author.voice else None
+
+                # Tenta parar e desconectar o VoiceClient atual com segurança
                 try:
-                    await vc.disconnect()
+                    if getattr(vc, 'is_playing', None) and (vc.is_playing() or vc.is_paused()):
+                        vc.stop()
+                except Exception:
+                    logging.exception('Falha ao parar reprodução atual durante recuperação')
+
+                try:
+                    if getattr(vc, 'is_connected', None):
+                        if vc.is_connected():
+                            await vc.disconnect()
                 except Exception:
                     logging.exception('Falha ao desconectar VoiceClient durante recuperação')
 
                 if channel:
                     try:
-                        await channel.connect()
-                        vc = message.guild.voice_client
-                        vc.play(discord.FFmpegPCMAudio(audio_url, **ffmpeg_opts))
-                        await message.channel.send(f"🎵 Tocando agora (reconectado): {info.get('title', url)}")
-                        return
+                        # Se não há conexão ativa, conecta; caso contrário, tenta mover a conexão existente
+                        if message.guild.voice_client is None:
+                            new_vc = await channel.connect()
+                        else:
+                            new_vc = message.guild.voice_client
+                            try:
+                                await new_vc.move_to(channel)
+                            except Exception:
+                                logging.exception('Falha ao mover VoiceClient para o canal durante recuperação')
+
+                        # Tenta tocar com a conexão nova/existente
+                        try:
+                            new_vc.play(discord.FFmpegPCMAudio(audio_url, **ffmpeg_opts))
+                            await message.channel.send(f"🎵 Tocando agora (reconectado): {info.get('title', url)}")
+                            return
+                        except Exception:
+                            logging.exception('Falha ao reproduzir após reconectar/mover')
+                    except discord.ClientException as ce:
+                        logging.exception('ClientException ao conectar/mover: já conectado?')
+                        existing_vc = message.guild.voice_client
+                        if existing_vc:
+                            try:
+                                # Tenta mover e tocar com a conexão existente
+                                try:
+                                    await existing_vc.move_to(channel)
+                                except Exception:
+                                    logging.exception('Falha ao mover existing VoiceClient durante recuperação')
+                                existing_vc.play(discord.FFmpegPCMAudio(audio_url, **ffmpeg_opts))
+                                await message.channel.send(f"🎵 Tocando agora (reconectado): {info.get('title', url)}")
+                                return
+                            except Exception:
+                                logging.exception('Falha ao tocar com existing VoiceClient durante recuperação')
                     except Exception:
                         logging.exception('Falha ao reconectar e reproduzir')
             except Exception:
