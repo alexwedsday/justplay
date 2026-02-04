@@ -3,6 +3,7 @@ import re
 import time
 import os
 import logging
+import json
 
 try:
     import yt_dlp
@@ -45,13 +46,14 @@ async def play_url(message, url):
         await message.channel.send("❌ O pacote yt-dlp não está instalado no ambiente do bot.")
         logging.error("yt_dlp não disponível")
         return
+    
     ydl_opts = {
-        "format": "bestaudio[abr<=96]/bestaudio",
-        "noplaylist": True,
-        "youtube_include_dash_manifest": False,
-        "youtube_include_hls_manifest": False,
-        'cookiefile': 'cookies.txt'
-    }
+    'format': 'm4a/bestaudio/best',
+    'postprocessors': [{ 
+        'key': 'FFmpegExtractAudio',
+        'preferredcodec': 'm4a',
+    }]
+}
 
    
     ffmpeg_opts = {
@@ -61,8 +63,11 @@ async def play_url(message, url):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
+            logging.info(f"Informações extraídas para {url}: {json.dumps(info, indent=2)}")
+            logging.info(f"URL de áudio extraída: {info.get('url')}")
+            print(json.dumps(ydl.sanitize_info(info)))
             audio_url = info['url']
-            vc.play(discord.FFmpegPCMAudio(audio_url))
+            vc.play(discord.FFmpegPCMAudio(audio_url, **ffmpeg_opts))
         await message.channel.send(f"🎵 Tocando agora: {info.get('title', url)}")
     except Exception as e:
         logging.exception("Erro em play_url")
