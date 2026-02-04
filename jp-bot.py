@@ -56,7 +56,7 @@ async def on_message(message):
                  channel = message.author.voice.channel
                  logging.info(f"Canal de voz do autor: {channel}")
                  await channel.connect();
-                 await message.channel.send(f"🚪 Entrei no canal de voz: {channel.name}")
+                 
             else:
                 logging.warning(f"Usuário {name} não está em um canal de voz")
                 await message.channel.send("⚠️ Você precisa estar em um canal de voz para usar este comando!")
