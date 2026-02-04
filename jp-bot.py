@@ -45,14 +45,15 @@ async def play_url(message, url):
         await message.channel.send("❌ O pacote yt-dlp não está instalado no ambiente do bot.")
         logging.error("yt_dlp não disponível")
         return
-
     ydl_opts = {
-        'format': 'ba', 
-        'extractaudio': True,  
-        'audioformat': 'mp3',  
-        'noplaylist': True,
+        "format": "bestaudio[abr<=96]/bestaudio",
+        "noplaylist": True,
+        "youtube_include_dash_manifest": False,
+        "youtube_include_hls_manifest": False,
         'cookiefile': 'cookies.txt'
     }
+
+   
     ffmpeg_opts = {
         'options': '-vn'
     }
