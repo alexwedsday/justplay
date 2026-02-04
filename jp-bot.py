@@ -47,14 +47,25 @@ async def play_url(message, url):
         logging.error("yt_dlp não disponível")
         return
     
+    # Se houver cookies passados via ENV, grava em cookies.txt para uso pelo yt-dlp
+    cookies_env = os.getenv('YTDL_COOKIES')
+    if cookies_env:
+        try:
+            with open('cookies.txt', 'w') as cf:
+                cf.write(cookies_env)
+        except Exception:
+            logging.exception("Erro ao escrever cookies em cookies.txt")
+
+    # Opções padrão para streaming
     ydl_opts = {
-        "format": "bestaudio/best", 
-        "noplaylist": True, 
-        "ignoreerrors": True, 
-        "default_search": "ytsearch", 
+        "format": "bestaudio/best",
+        "noplaylist": True,
+        "ignoreerrors": True,
+        "default_search": "ytsearch",
         "quiet": True,
         'cookiefile': 'cookies.txt',
-        "js_runtimes": ["node"]
+        # js_runtimes deve ser um dicionário de {runtime: {config}}
+        "js_runtimes": {"node": {}},
     }
 
     ffmpeg_opts = {
@@ -67,14 +78,14 @@ async def play_url(message, url):
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
-        except DownloadError as e:
+        except DownloadError:
             logging.warning("Formato solicitado não disponível; tentando sem especificar 'format'...")
             ydl_retry_opts = dict(ydl_opts)
             ydl_retry_opts.pop('format', None)
             try:
                 with yt_dlp.YoutubeDL(ydl_retry_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
-            except DownloadError as e2:
+            except DownloadError:
                 logging.exception("Retry falhou: formato ainda indisponível")
                 # Tentar obter a lista de formatos via binário yt-dlp para diagnóstico
                 try:
@@ -92,11 +103,86 @@ async def play_url(message, url):
 ```
 {preview_text}
 ```""")
-                raise
+
+                # Tentar fallback de download: baixa o arquivo e reproduz localmente
+                try:
+                    ydl_dl_opts = {
+                        'format': 'bestaudio/best',
+                        'outtmpl': '/tmp/%(id)s.%(ext)s',
+                        'noplaylist': True,
+                        'quiet': True,
+                        'cookiefile': 'cookies.txt',
+                    }
+                    with yt_dlp.YoutubeDL(ydl_dl_opts) as ydl:
+                        info_dl = ydl.extract_info(url, download=True)
+                        if not info_dl:
+                            raise Exception('Download fallback não retornou informações')
+                        filename = ydl.prepare_filename(info_dl)
+
+                    # Procurar pelo arquivo baixado (considerando possíveis conversões de extensão)
+                    base = os.path.splitext(filename)[0]
+                    candidates = [f"{base}.{ext}" for ext in ("m4a","mp3","webm","mp4","opus","wav")]
+                    candidates.append(filename)
+                    existing = None
+                    import glob
+                    for c in candidates:
+                        if os.path.exists(c):
+                            existing = c
+                            break
+                    if not existing:
+                        matches = glob.glob(base + '.*')
+                        if matches:
+                            existing = matches[0]
+                    if not existing:
+                        raise Exception('Arquivo de áudio não encontrado após download')
+
+                    # Para segurança, para qualquer reprodução atual
+                    if getattr(vc, 'is_playing', None) and (vc.is_playing() or vc.is_paused()):
+                        try:
+                            vc.stop()
+                        except Exception:
+                            logging.exception('Falha ao parar reprodução atual')
+
+                    try:
+                        vc.play(discord.FFmpegPCMAudio(existing, **ffmpeg_opts))
+                        await message.channel.send(f"🎵 Tocando agora (download): {info_dl.get('title', url)}")
+                        return
+                    except Exception as play_err:
+                        logging.exception('Erro ao reproduzir arquivo baixado')
+                        await message.channel.send(f"❌ Erro ao reproduzir arquivo baixado: {play_err}")
+                        return
+                except Exception:
+                    logging.exception('Fallback de download falhou')
+                    await message.channel.send('❌ Fallback de download falhou. Verifique logs.')
+                    return
 
         # Validação: garante que `info` foi retornado
         if not info:
             logging.error("yt-dlp retornou None para 'info' — conteúdo possivelmente indisponível ou requer cookies/JS runtime")
+            # Antes de falhar completamente, tentar fallback de download como último recurso
+            try:
+                ydl_dl_opts = {
+                    'format': 'bestaudio/best',
+                    'outtmpl': '/tmp/%(id)s.%(ext)s',
+                    'noplaylist': True,
+                    'quiet': True,
+                    'cookiefile': 'cookies.txt',
+                }
+                with yt_dlp.YoutubeDL(ydl_dl_opts) as ydl:
+                    info_dl = ydl.extract_info(url, download=True)
+                    if info_dl:
+                        filename = ydl.prepare_filename(info_dl)
+                        base = os.path.splitext(filename)[0]
+                        import glob
+                        matches = glob.glob(base + '.*')
+                        if matches:
+                            existing = matches[0]
+                            vc.play(discord.FFmpegPCMAudio(existing, **ffmpeg_opts))
+                            await message.channel.send(f"🎵 Tocando agora (download): {info_dl.get('title', url)}")
+                            return
+            except Exception:
+                logging.exception('Fallback de download falhou após info None')
+
             await message.channel.send("❌ Não foi possível extrair informações do vídeo — pode estar indisponível, privado ou exigir cookies/JS runtime.")
             return
 
@@ -135,8 +221,39 @@ async def play_url(message, url):
             await message.channel.send("❌ Não foi possível obter a URL de áudio válida.")
             return
 
-        vc.play(discord.FFmpegPCMAudio(audio_url, **ffmpeg_opts))
-        await message.channel.send(f"🎵 Tocando agora: {info.get('title', url)}")
+        # Tentar reproduzir com tratamento de erros e tentativa de recovery
+        try:
+            if getattr(vc, 'is_playing', None) and (vc.is_playing() or vc.is_paused()):
+                try:
+                    vc.stop()
+                except Exception:
+                    logging.exception('Falha ao parar reprodução atual')
+
+            vc.play(discord.FFmpegPCMAudio(audio_url, **ffmpeg_opts))
+            await message.channel.send(f"🎵 Tocando agora: {info.get('title', url)}")
+        except Exception as e_play:
+            logging.exception("Erro ao iniciar reprodução via streaming")
+            # tentativa de recuperação: desconectar e reconectar no canal do autor
+            try:
+                channel = message.author.voice.channel if message.author and message.author.voice else None
+                try:
+                    await vc.disconnect()
+                except Exception:
+                    logging.exception('Falha ao desconectar VoiceClient durante recuperação')
+
+                if channel:
+                    try:
+                        await channel.connect()
+                        vc = message.guild.voice_client
+                        vc.play(discord.FFmpegPCMAudio(audio_url, **ffmpeg_opts))
+                        await message.channel.send(f"🎵 Tocando agora (reconectado): {info.get('title', url)}")
+                        return
+                    except Exception:
+                        logging.exception('Falha ao reconectar e reproduzir')
+            except Exception:
+                logging.exception('Erro na rotina de recuperação da voz')
+
+            await message.channel.send(f"❌ Erro ao tentar tocar o áudio: {e_play}")
     except Exception as e:
         logging.exception("Erro em play_url")
         await message.channel.send(f"❌ Erro ao tentar tocar o áudio: {e}")
