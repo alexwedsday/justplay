@@ -48,13 +48,8 @@ async def play_url(message, url):
         return
     
     ydl_opts = {
-    'format': 'm4a/bestaudio/best',
-    'cookiefile': 'cookies.txt',
-    'postprocessors': [{ 
-        'key': 'FFmpegExtractAudio',
-        'preferredcodec': 'm4a',
-    }]
-}
+        'cookiefile': 'cookies.txt'
+        }
 
    
     ffmpeg_opts = {
@@ -68,7 +63,7 @@ async def play_url(message, url):
             logging.info(f"URL de áudio extraída: {info.get('url')}")
             print(json.dumps(ydl.sanitize_info(info)))
             audio_url = info['url']
-            vc.play(discord.FFmpegPCMAudio(audio_url, **ffmpeg_opts))
+           
         await message.channel.send(f"🎵 Tocando agora: {info.get('title', url)}")
     except Exception as e:
         logging.exception("Erro em play_url")
