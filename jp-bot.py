@@ -44,11 +44,17 @@ async def on_message(message):
        
         if "youtube.com" in url or "youtu.be" in url or "spotify.com" in url:
             now = time.time()
+            author = message.author
+            logging.info(f"Link detectado na mensagem de {author}: {url}")
+            name = author.display_name
+            logging.info(f"Nome do autor: {name}")
+            channel = message.author.voice.channel
+            logging.info(f"Canal de voz do autor: {channel}")
             channel_id = message.channel.id
             
           
             if channel_id not in last_used or now - last_used[channel_id] > COOLDOWN:
-                await message.channel.send(f"m!play {url} --channel Fazendo NOTHING")
+                await message.channel.send(f"m!play {url}")
                 last_used[channel_id] = now
                 logging.info(f"Mensagem recebida no canal: {message.channel.name}")
                 logging.info(f"Comando enviado: m!play {url} no canal {channel_id}")
