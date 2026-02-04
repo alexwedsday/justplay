@@ -15,17 +15,13 @@ else:
 
 intents = discord.Intents.default()
 intents.message_content = True 
-intents.guilds = True 
-intents.members = True
 intents.messages = True
 client = discord.Client(intents=intents)
 
 logging.info(f"Intents configurados:") 
-logging.info(f" - default: {client.intents}")
 logging.info(f" - messages: {intents.messages}")
 logging.info(f" - message_content: {intents.message_content}") 
-logging.info(f" - guilds: {intents.guilds}") 
-logging.info(f" - members: {intents.members}")
+
 
 
 last_used = {}
